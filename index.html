@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campeonato Bomba Patch - Multiplayer Otimizado</title>
+    
+    <!-- Bibliotecas do Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #121212;
+            --panel-bg: #1e1e1e;
+            --primary: #00ff88;
+            --text: #ffffff;
+            --border: #333;
+            --highlight: #00cc6a;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+        h1, h2, h3 { text-align: center; color: var(--primary); }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding-top: 30px; }
+
+        /* BADGE DO CÓDIGO (Canto Superior Esquerdo) */
+        .room-badge {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: var(--primary);
+            color: #000;
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 16px;
+            z-index: 1000;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .room-badge span { font-size: 18px; letter-spacing: 2px; }
+        .btn-exit {
+            background: #121212;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+        .btn-exit:hover { background: #ff4444; color: #fff; border-color: #ff4444; }
+
+        /* TELA INICIAL (MENU DIVIDIDO) */
+        #setup-screen {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            min-height: 60vh;
+        }
+        .menu-split {
+            display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; width: 100%; max-width: 800px;
+        }
+        .menu-card {
+            background: var(--panel-bg); border: 1px solid var(--primary); border-radius: 10px;
+            padding: 30px; flex: 1; min-width: 300px; text-align: center;
+            display: flex; flex-direction: column; gap: 15px;
+        }
+        select, .input-code {
+            padding: 12px; font-size: 18px; background: #121212; color: white;
+            border: 1px solid var(--primary); border-radius: 5px; width: 100%; box-sizing: border-box; text-align: center;
+        }
+
+        /* GRUPOS */
+        .group-container {
+            background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px;
+            padding: 20px; margin-bottom: 30px; display: flex; gap: 20px; flex-wrap: wrap;
+        }
+        .table-section { flex: 1.5; min-width: 300px; overflow-x: auto; }
+        .matches-section { flex: 1; min-width: 300px; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; white-space: nowrap; }
+        th, td { padding: 10px; text-align: center; border-bottom: 1px solid var(--border); }
+        th { color: var(--primary); }
+        
+        .team-name-input {
+            background: transparent; border: 1px dashed transparent; font-weight: bold;
+            font-size: 15px; text-align: left; padding: 5px; width: 120px; color: inherit; transition: 0.3s;
+        }
+        .team-name-input:focus { border-color: var(--primary); outline: none; background: #121212; }
+
+        .match { display: flex; align-items: center; justify-content: space-between; background: #2a2a2a; padding: 10px; border-radius: 5px; margin-bottom: 10px; }
+        .match-team { flex: 1; text-align: center; font-size: 14px; font-weight: bold; }
+        input[type="number"] {
+            width: 35px; text-align: center; background: #121212; color: white;
+            border: 1px solid var(--primary); border-radius: 4px; padding: 5px; font-weight: bold;
+        }
+
+        /* BOTÕES GERAIS */
+        .btn-container { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin: 20px 0; }
+        .btn { padding: 15px 30px; background-color: var(--primary); color: #000; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; transition: 0.3s; }
+        .btn:hover { background-color: var(--highlight); }
+        .btn-secondary { background-color: #444; color: #fff; }
+        .btn-secondary:hover { background-color: #555; }
+        .btn-danger { background-color: #cc0000; color: #fff; }
+        .btn-danger:hover { background-color: #ff3333; }
+
+        /* MATA-MATA (CHAVES) */
+        .bracket-wrapper { width: 100%; overflow-x: auto; padding: 20px 0; }
+        .bracket { display: flex; justify-content: space-between; gap: 40px; min-width: 800px; }
+        .bracket-column { display: flex; flex-direction: column; justify-content: space-around; flex: 1; position: relative; gap: 20px; }
+        .bracket-match { background: var(--panel-bg); border: 1px solid var(--border); border-radius: 6px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .bracket-team { display: flex; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; transition: 0.2s; }
+        .bracket-team:last-child { border-bottom: none; }
+        .bracket-team:hover { background: #333; }
+        .bracket-team.winner { color: var(--primary); font-weight: bold; }
+        .b-team-name { flex: 1; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;}
+        .b-score { width: 30px; margin-left: 10px; }
+        .col-title { text-align: center; color: #888; margin-bottom: 15px; font-size: 14px; text-transform: uppercase; }
+
+        .hide { display: none !important; }
+    </style>
+</head>
+<body>
+
+<!-- CHAVE DO TORNEIO (Canto Superior) -->
+<div id="room-badge" class="room-badge hide">
+    SALA: <span id="display-code">------</span>
+    <button class="btn-exit" onclick="leaveRoom()">Sair</button>
+</div>
+
+<div class="container">
+    <h1>🏆 Campeonato Bomba Patch 🏆</h1>
+
+    <!-- TELA 1: MENU PRINCIPAL (CRIAR OU ENTRAR) -->
+    <div id="setup-screen">
+        <div class="menu-split">
+            <!-- CRIAR -->
+            <div class="menu-card">
+                <h2>Criar Novo Torneio</h2>
+                <p>Selecione a quantidade de times e gere uma senha.</p>
+                <select id="team-count">
+                    <option value="8">8 Times (2 Grupos)</option>
+                    <option value="12">12 Times (3 Grupos)</option>
+                    <option value="16">16 Times (4 Grupos)</option>
+                    <option value="24">24 Times (6 Grupos)</option>
+                    <option value="32">32 Times (8 Grupos)</option>
+                    <option value="48">48 Times (12 Grupos)</option>
+                </select>
+                <button class="btn" onclick="createNewTournament()">Criar e Gerar Senha</button>
+            </div>
+            
+            <!-- ENTRAR -->
+            <div class="menu-card">
+                <h2>Entrar em um Torneio</h2>
+                <p>Insira a senha de 6 dígitos fornecida pelo criador.</p>
+                <input type="text" id="join-code" class="input-code" placeholder="Ex: 123456" maxlength="6" />
+                <button class="btn" onclick="joinExistingTournament()">Entrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TELA 2: FASE DE GRUPOS -->
+    <div id="groups-screen" class="hide">
+        <h2>Fase de Grupos</h2>
+        <div id="grupos-wrapper"></div>
+        <div class="btn-container">
+            <button class="btn btn-secondary hide" id="btn-view-bracket" onclick="changeScreen('knockout')">Ir para o Mata-Mata</button>
+            <button class="btn" onclick="generateKnockout()">Sortear Mata-Mata (Embaralhar)</button>
+        </div>
+    </div>
+
+    <!-- TELA 3: MATA-MATA -->
+    <div id="knockout-screen" class="hide">
+        <h2>⚔️ Fase Final (Mata-Mata) ⚔️</h2>
+        <div class="btn-container">
+            <button class="btn btn-secondary" onclick="changeScreen('groups')">Voltar para os Grupos</button>
+        </div>
+        <p style="text-align: center; color: #aaa;">Dica: Digite o placar e <b>clique no nome do time</b> para avançá-lo para a próxima fase.</p>
+        <div class="bracket-wrapper">
+            <div class="bracket" id="bracket-container"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ==========================================
+    // CONFIGURAÇÃO DO FIREBASE
+    // ==========================================
+    const firebaseConfig = {
+        apiKey: "AIzaSyAjfwdxH7chb3HDX5gdYHeLr5Odr0IUPm8",
+        authDomain: "bp-torneio-save.firebaseapp.com",
+        databaseURL: "https://bp-torneio-save-default-rtdb.firebaseio.com",
+        projectId: "bp-torneio-save",
+        storageBucket: "bp-torneio-save.firebasestorage.app",
+        messagingSenderId: "990670224464",
+        appId: "1:990670224464:web:79797c0be115cd553f2555"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ==========================================
+    // ESTADO GLOBAL DO SISTEMA
+    // ==========================================
+    let currentRoom = null;
+    let isSavingLocally = false;
+    let state = {
+        activeScreen: 'groups',
+        config: { totalTeams: 0, groups: 0 },
+        groups: {},
+        bracketMatches: []
+    };
+
+    const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const confrontosBase = [[0, 1], [2, 3], [0, 2], [1, 3], [0, 3], [1, 2]];
+
+    // Restaura a sala automaticamente ao atualizar (F5)
+    window.onload = function() {
+        const savedRoom = localStorage.getItem('bp_currentRoom');
+        if (savedRoom) {
+            currentRoom = savedRoom;
+            document.getElementById('display-code').innerText = currentRoom;
+            document.getElementById('room-badge').classList.remove('hide');
+            document.getElementById('setup-screen').classList.add('hide');
+            listenToRoom(currentRoom);
+        }
+    };
+
+    function leaveRoom() {
+        if (confirm("Deseja sair desta sala e voltar ao menu principal?")) {
+            localStorage.removeItem('bp_currentRoom');
+            location.reload();
+        }
+    }
+
+    // ==========================================
+    // SINCRONIZAÇÃO COM O FIREBASE
+    // ==========================================
+    function saveState() {
+        if (!db || !currentRoom) return;
+        isSavingLocally = true;
+        db.ref('tournaments/' + currentRoom).set(state).then(() => {
+            isSavingLocally = false;
+        });
+    }
+
+    function listenToRoom(roomCode) {
+        db.ref('tournaments/' + roomCode).on('value', snapshot => {
+            const data = snapshot.val();
+            if (data) {
+                if (isSavingLocally) return;
+
+                // Atualiza o estado sem destruir os inputs focados se o usuário estiver digitando
+                const activeEl = document.activeElement;
+                const isTyping = activeEl && (activeEl.tagName === 'INPUT');
+
+                state = data;
+                renderEverything(isTyping);
+            } else {
+                alert("Torneio não encontrado ou encerrado!");
+                localStorage.removeItem('bp_currentRoom');
+                location.reload();
+            }
+        });
+    }
+
+    function createNewTournament() {
+        currentRoom = Math.floor(100000 + Math.random() * 900000).toString();
+        localStorage.setItem('bp_currentRoom', currentRoom);
+        
+        const numTimes = parseInt(document.getElementById('team-count').value);
+        state.config.totalTeams = numTimes;
+        state.config.groups = numTimes / 4;
+        state.activeScreen = 'groups';
+        state.bracketMatches = [];
+        
+        buildGroupsData();
+        
+        document.getElementById('display-code').innerText = currentRoom;
+        document.getElementById('room-badge').classList.remove('hide');
+
+        saveState();
+        listenToRoom(currentRoom);
+
+        document.getElementById('setup-screen').classList.add('hide');
+    }
+
+    function joinExistingTournament() {
+        const code = document.getElementById('join-code').value.trim();
+        if (code.length < 5) {
+            alert("Digite um código válido.");
+            return;
+        }
+
+        currentRoom = code;
+        localStorage.setItem('bp_currentRoom', currentRoom);
+        
+        document.getElementById('display-code').innerText = currentRoom;
+        document.getElementById('room-badge').classList.remove('hide');
+        document.getElementById('setup-screen').classList.add('hide');
+
+        listenToRoom(currentRoom);
+    }
+
+    function changeScreen(screenName) {
+        state.activeScreen = screenName;
+        saveState();
+        renderEverything(false);
+    }
+
+    // ==========================================
+    // RENDERIZAÇÃO OTIMIZADA E RESPONSIVA
+    // ==========================================
+    function renderEverything(isTyping = false) {
+        if (state.activeScreen === 'groups') {
+            document.getElementById('groups-screen').classList.remove('hide');
+            document.getElementById('knockout-screen').classList.add('hide');
+            
+            // Se o container de grupos estiver vazio, constrói do zero. Caso contrário, atualiza as tabelas de forma fluida.
+            const wrapper = document.getElementById('grupos-wrapper');
+            if (wrapper.children.length === 0) {
+                renderGroupsDOM();
+            } else if (!isTyping) {
+                // Atualiza tabelas e nomes sem recriar todo o DOM se o usuário não estiver focado digitando
+                Object.keys(state.groups).forEach(grupo => {
+                    updateTable(grupo);
+                });
+            }
+            
+            if (state.bracketMatches && state.bracketMatches.length > 0) {
+                document.getElementById('btn-view-bracket').classList.remove('hide');
+            } else {
+                document.getElementById('btn-view-bracket').classList.add('hide');
+            }
+
+        } else if (state.activeScreen === 'knockout') {
+            document.getElementById('groups-screen').classList.add('hide');
+            document.getElementById('knockout-screen').classList.remove('hide');
+            updateBracketView();
+        }
+    }
+
+    function buildGroupsData() {
+        state.groups = {};
+        for (let i = 0; i < state.config.groups; i++) {
+            let grupo = letras[i];
+            let teams = [];
+            for (let t = 1; t <= 4; t++) {
+                teams.push({ id: `${grupo}${t}`, name: `Time ${grupo}${t}`, Pts: 0, J: 0, V: 0, E: 0, D: 0, SG: 0, GP: 0, GC: 0 });
+            }
+            let matches = confrontosBase.map((c, index) => ({
+                id: `G${grupo}-M${index}`, t1_id: teams[c[0]].id, t2_id: teams[c[1]].id, g1: null, g2: null
+            }));
+            state.groups[grupo] = { teams, matches };
+        }
+    }
+
+    function renderGroupsDOM() {
+        const wrapper = document.getElementById('grupos-wrapper');
+        wrapper.innerHTML = '';
+
+        Object.keys(state.groups).forEach(grupo => {
+            wrapper.innerHTML += `
+                <div class="group-container">
+                    <div class="table-section">
+                        <h3 style="text-align:left; margin-top:0;">Grupo ${grupo}</h3>
+                        <table>
+                            <thead><tr><th>Time</th><th>Pts</th><th>J</th><th>V</th><th>E</th><th>D</th><th>SG</th></tr></thead>
+                            <tbody id="tbody-${grupo}"></tbody>
+                        </table>
+                    </div>
+                    <div class="matches-section">
+                        <h4 style="color: #aaa; text-align: center; margin-top:0;">Jogos</h4>
+                        <div id="matches-${grupo}"></div>
+                    </div>
+                </div>
+            `;
+            renderMatches(grupo);
+            updateTable(grupo);
+        });
+    }
+
+    function updateTeamName(grupo, teamId, newName) {
+        let team = state.groups[grupo].teams.find(t => t.id === teamId);
+        if (team) {
+            team.name = newName.trim() === '' ? `Time ${teamId}` : newName;
+            renderMatches(grupo);
+            saveState();
+        }
+    }
+
+    function renderMatches(grupo) {
+        const container = document.getElementById(`matches-${grupo}`);
+        if(!container) return;
+        container.innerHTML = '';
+        state.groups[grupo].matches.forEach((m, idx) => {
+            let t1 = state.groups[grupo].teams.find(t => t.id === m.t1_id).name;
+            let t2 = state.groups[grupo].teams.find(t => t.id === m.t2_id).name;
+            let valG1 = m.g1 !== null ? m.g1 : '';
+            let valG2 = m.g2 !== null ? m.g2 : '';
+
+            container.innerHTML += `
+                <div class="match">
+                    <span class="match-team">${t1}</span>
+                    <input type="number" min="0" value="${valG1}" onchange="handleScore('${grupo}', ${idx}, 1, this.value)">
+                    <span style="color:#666">X</span>
+                    <input type="number" min="0" value="${valG2}" onchange="handleScore('${grupo}', ${idx}, 2, this.value)">
+                    <span class="match-team">${t2}</span>
+                </div>
+            `;
+        });
+    }
+
+    // FLUXO RESPONSIVO DE CÁLCULO E CLASSIFICAÇÃO IMEDIATA
+    function handleScore(grupo, matchIdx, teamNum, value) {
+        const val = value === '' ? null : parseInt(value);
+        if (teamNum === 1) state.groups[grupo].matches[matchIdx].g1 = val;
+        else state.groups[grupo].matches[matchIdx].g2 = val;
+        
+        calculateStats(grupo);
+        updateTable(grupo);
+        saveState();
+    }
+
+    function calculateStats(grupo) {
+        state.groups[grupo].teams.forEach(t => { t.Pts = 0; t.J = 0; t.V = 0; t.E = 0; t.D = 0; t.SG = 0; t.GP = 0; t.GC = 0; });
+        
+        state.groups[grupo].matches.forEach(m => {
+            if (m.g1 !== null && m.g2 !== null) {
+                let team1 = state.groups[grupo].teams.find(t => t.id === m.t1_id);
+                let team2 = state.groups[grupo].teams.find(t => t.id === m.t2_id);
+                
+                team1.J++; team2.J++; 
+                team1.GP += m.g1; team1.GC += m.g2; 
+                team2.GP += m.g2; team2.GC += m.g1;
+                
+                if (m.g1 > m.g2) { team1.Pts += 3; team1.V++; team2.D++; } 
+                else if (m.g1 < m.g2) { team2.Pts += 3; team2.V++; team1.D++; } 
+                else { team1.Pts += 1; team2.Pts += 1; team1.E++; team2.E++; }
+            }
+        });
+
+        state.groups[grupo].teams.forEach(t => t.SG = t.GP - t.GC);
+        
+        // Classificação e ordenação instantânea por Pontos e Saldo de Gols
+        state.groups[grupo].teams.sort((a, b) => {
+            if (b.Pts !== a.Pts) return b.Pts - a.Pts;
+            return b.SG - a.SG;
+        });
+    }
+
+    function updateTable(grupo) {
+        const tbody = document.getElementById(`tbody-${grupo}`);
+        if(!tbody) return;
+        tbody.innerHTML = '';
+        
+        state.groups[grupo].teams.forEach((t, i) => {
+            let isQualified = i < 2;
+            let isThird = (i === 2 && [12, 24, 48].includes(state.config.totalTeams));
+            let color = isQualified ? '#00ff88' : (isThird ? '#ffcc00' : '#ff4444');
+            
+            tbody.innerHTML += `
+                <tr style="color: ${color}">
+                    <td><input type="text" class="team-name-input" value="${t.name}" onchange="updateTeamName('${grupo}', '${t.id}', this.value)"></td>
+                    <td>${t.Pts}</td><td>${t.J}</td><td>${t.V}</td><td>${t.E}</td><td>${t.D}</td><td>${t.SG}</td>
+                </tr>
+            `;
+        });
+    }
+
+    // ==========================================
+    // MATA-MATA (CHAVES)
+    // ==========================================
+    function generateKnockout() {
+        if (state.bracketMatches && state.bracketMatches.length > 0) {
+            if (!confirm("Aviso: Sorteando novamente você perderá o progresso do mata-mata atual. Deseja continuar?")) return;
+        }
+
+        let primeirosESegundos = [];
+        let terceiros = [];
+        Object.keys(state.groups).forEach(g => {
+            let t = state.groups[g].teams;
+            primeirosESegundos.push(t[0], t[1]);
+            terceiros.push(t[2]);
+        });
+
+        terceiros.sort((a, b) => (b.Pts !== a.Pts) ? b.Pts - a.Pts : b.SG - a.SG);
+
+        let classificados = [];
+        let t = state.config.totalTeams;
+        if (t === 8 || t === 16 || t === 32) classificados = primeirosESegundos;
+        else if (t === 12) classificados = [...primeirosESegundos, ...terceiros.slice(0, 2)];
+        else if (t === 24) classificados = [...primeirosESegundos, ...terceiros.slice(0, 4)];
+        else if (t === 48) classificados = [...primeirosESegundos, ...terceiros.slice(0, 8)];
+
+        // Embaralhamento Fisher-Yates
+        for (let i = classificados.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [classificados[i], classificados[j]] = [classificados[j], classificados[i]];
+        }
+
+        state.bracketMatches = [];
+        let numRounds = Math.log2(classificados.length);
+        for(let r = 0; r < numRounds; r++) {
+            let matchesInRound = classificados.length / Math.pow(2, r + 1);
+            let round = [];
+            for(let m = 0; m < matchesInRound; m++) {
+                round.push({ id: `R${r}M${m}`, t1: null, t2: null, s1: '', s2: '', winner: null });
+            }
+            state.bracketMatches.push(round);
+        }
+
+        let matchIndex = 0;
+        for(let i = 0; i < classificados.length; i+=2) {
+            state.bracketMatches[0][matchIndex].t1 = classificados[i];
+            state.bracketMatches[0][matchIndex].t2 = classificados[i+1];
+            matchIndex++;
+        }
+
+        changeScreen('knockout');
+    }
+
+    function updateBracketView() {
+        const allRoundNames = ["16 Avos de Final", "Oitavas de Final", "Quartas de Final", "Semifinal", "Final"];
+        let currentRoundNames = allRoundNames.slice(-state.bracketMatches.length);
+        
+        const container = document.getElementById('bracket-container');
+        if(!container) return;
+        container.innerHTML = '';
+
+        state.bracketMatches.forEach((round, rIndex) => {
+            let colHTML = `<div class="bracket-column"><div class="col-title">${currentRoundNames[rIndex]}</div>`;
+            round.forEach((match, mIndex) => {
+                let t1Name = match.t1 ? match.t1.name : "A definir";
+                let t2Name = match.t2 ? match.t2.name : "A definir";
+                let isT1Win = match.winner === 1 ? "winner" : "";
+                let isT2Win = match.winner === 2 ? "winner" : "";
+                let click1 = match.t1 ? `onclick="advanceTeam(${rIndex}, ${mIndex}, 1)"` : "";
+                let click2 = match.t2 ? `onclick="advanceTeam(${rIndex}, ${mIndex}, 2)"` : "";
+
+                colHTML += `
+                    <div class="bracket-match">
+                        <div class="bracket-team ${isT1Win}" ${click1}>
+                            <span class="b-team-name">${t1Name}</span>
+                            <input type="number" class="b-score" value="${match.s1}" placeholder="0" onchange="updateBracketScore(${rIndex}, ${mIndex}, 1, this.value)" onclick="event.stopPropagation()">
+                        </div>
+                        <div class="bracket-team ${isT2Win}" ${click2}>
+                            <span class="b-team-name">${t2Name}</span>
+                            <input type="number" class="b-score" value="${match.s2}" placeholder="0" onchange="updateBracketScore(${rIndex}, ${mIndex}, 2, this.value)" onclick="event.stopPropagation()">
+                        </div>
+                    </div>
+                `;
+            });
+            colHTML += `</div>`;
+            container.innerHTML += colHTML;
+        });
+    }
+
+    function updateBracketScore(roundIdx, matchIdx, teamNum, value) {
+        if(teamNum === 1) state.bracketMatches[roundIdx][matchIdx].s1 = value;
+        else state.bracketMatches[roundIdx][matchIdx].s2 = value;
+        saveState();
+    }
+
+    function advanceTeam(roundIdx, matchIdx, teamNum) {
+        let match = state.bracketMatches[roundIdx][matchIdx];
+        if (roundIdx === state.bracketMatches.length - 1) {
+            match.winner = teamNum;
+            saveState();
+            let champion = teamNum === 1 ? match.t1.name : match.t2.name;
+            setTimeout(() => alert(`🏆 ${champion.toUpperCase()} É O CAMPEÃO! 🏆`), 100);
+            updateBracketView();
+            return;
+        }
+
+        match.winner = teamNum;
+        let advancingTeam = teamNum === 1 ? match.t1 : match.t2;
+        let nextRound = roundIdx + 1;
+        let nextMatchIdx = Math.floor(matchIdx / 2);
+        let isTopSlot = matchIdx % 2 === 0; 
+
+        if (isTopSlot) state.bracketMatches[nextRound][nextMatchIdx].t1 = advancingTeam;
+        else state.bracketMatches[nextRound][nextMatchIdx].t2 = advancingTeam;
+
+        saveState();
+        updateBracketView();
+    }
+</script>
+
+</body>
+</html>
